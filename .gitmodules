@@ -1,0 +1,3 @@
+[submodule "misc/shini"]
+	path = misc/shini
+	url = https://github.com/wallyhall/shini.git
