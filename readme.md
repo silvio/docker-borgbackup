@@ -15,11 +15,21 @@ Retrieve the docker image via `docker pull`.
 # How to run
 
 This backup system is controlled via borgctl script from this [repository].
-Alternatively the controlling script can be acquired via `docker run --rm
+Alternatively the controlling script can and should be acquired via `docker run --rm
 silviof/docker-borgbackup get_borgctl`. The used script must be the same as the
-script in the container. This project is configured via ini-files. For this
-you need the [shini] ini file parser located at `/usr/bin/shini.sh`. You can
-get a copy with `docker run --rm silviof/docker-borgbackup get_shini`.
+script in the container. Configuration is done via an ini-file. You can get
+a example ini file via `docker run --rm silviof/docker-borgbackup get_ini`.
+This project is configured via ini-files. For this you need the [shini] ini
+file parser located at `/usr/bin/shini.sh`. You can get a copy with `docker run
+--rm silviof/docker-borgbackup get_shini`.
+
+All tree files can be retrieved via this three commands:
+
+```bash
+docker run --rm silviof/docker-borgbackup get_borgctl > borgctl
+docker run --rm silviof/docker-borgbackup get_ini > borgbackup.ini
+docker run --rm silviof/docker-borgbackup get_shini > shini
+```
 
 You have two choices to save you data. The first one is to backup on a local
 file storage/mounted device and the second one is a backup via ssh/sftp
