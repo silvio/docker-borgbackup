@@ -6,8 +6,7 @@ computer.
 
 # Installation
 
-Retrieve the docker image via `docker pull` and create an alias in your
-`.${SHELL}rc` or put a shell script somewhere.
+Retrieve the docker image via `docker pull`.
 
 ```
 % docker pull silviof/docker-borgbackup
