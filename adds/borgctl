@@ -72,18 +72,12 @@ usage() {
 
 # check installation of shini
 SHINI=""
-if [[ -f ${INSTALLDIR}/../misc/shini/shini.sh ]]; then
-	SHINI="${INSTALLDIR}/../misc/shini/shini.sh"
-else
-	if [[ -f /usr/bin/shini ]] ; then
-		SHINI=/usr/bin/shini
-	elif [[ -f /usr/bin/shini.sh ]]; then
-		SHINI=/usr/bin/shini.sh
-	else
-		usage
-		errormsg "No /usr/bin/shini found, please copy shini.sh from https://github.com/wallyhall/shini to /usr/bin/"
-	fi
-fi
+pathes=(/bin /usr/bin ${HOME}/bin ${HOME}/usr/bin ${INSTALLDIR}/../misc/shini)
+for path in ${pathes[@]}; do
+	[[ -f ${path}/shini.sh ]] && SHINI=${path}/shini.sh && break
+	[[ -f ${path}/shini ]] && SHINI=${path}/shini && break
+done
+[[ -z "${SHINI}" ]] && errormsg "No 'shini' found, please copy shini.sh from https://github.com/wallyhall/shini to one of this folders: ${pathes[@]}"
 
 # parser for inifile
 help_init_from_ini() {
