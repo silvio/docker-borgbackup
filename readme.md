@@ -1,94 +1,155 @@
 
+# Introduction
+
 This docker project brings the small and simple backup solution [borg] to your
 computer.
 
+# How to run
+
+This backup system is controlled via borgctl script from this [repository].
+Alternatively the controlling script can be acquired via `docker run --rm
+silviof/docker-borgbackup get_borgctl`. The used script must be the same as the
+script in the container. This project is configured via ini-files. For this
+you need the [shini] ini file parser located at `/usr/bin/shini.sh`. You can
+get a copy with `docker run --rm silviof/docker-borgbackup get_shini`.
+
+You have two choices to save you data. The first one is to backup on a local
+file storage/mounted device and the second one is a backup via ssh/sftp
+protocol and a borg server. Both are possible with this docker backup solution.
+
+You can control the running docker container with some environment
+variables.
+
+*   `BORGBACKUP_DOCKER_RUN_SHELL_OPTION` change the docker run call for
+    `shell`. Default is `-ti --rm`.
+*   `BORGBACKUP_DOCKER_RUN_BACKUP_OPTION` change the docker run call for
+    `backup`. Default is `--rm --sig-proxy`.
+*   `BORGBACKUP_DOCKER_RUN_SERVER_OPTION` change the docker run call for
+    `server`. Default is `--rm --name=backupserver`.
+
+The docker container needs some more data like your ssh-key or/and a
+connection to the ssh-agent to work correctly. The container is started via
+`sudo` (configurable) and privileged to allow backup of data which isn't
+owned by the user starting the container. All folders which are not
+stores are mounted in read-only mode.
+
+# a simple example (installation, inifile and backup)
+
+For a simple example let us assume we need to backup everything under
+`/development` folder without the `/development/archive` subfolder. We do our
+backup everyday at 12 o\`clock and hold the backups for the last 7 days. Our
+backup folder is mounted in /media/sde3. The backup should be placed into the
+`BACKUP` folder of this device.
+
+The first step is to have a `borgbackup.ini` file. The contents should be
+something like this:
+
+    [GENERAL]
+    REPOSITORY = "file:///media/sde3"
+    FOLDER = "/backupuser"
+    SSHKEY = /home/user/.ssh/id_rsa
+    ENCRYPTION = "AVeryVeryVeryVeryAndVeryVeryVeryLongishSecureWordHere"
+    SUDO = 1
+    FILECACHE = /home/user/.cache/borgbackup
+    VERBOSE = 1
+    STAT = 1
+    RESTOREDIR = /storage/restore
+
+    [BACKUP001]
+    PATH = /development
+    EXCLUDE = /development/archive
+    COMPRESSION = zlib,6
+    KEEPWITHIN = 1w
+
+Now we should initialize the backup store via `borgctl shell` command. After
+that we should be dropped into a container configured for work with borg.
+
+    $ borgctl shell ~/borgbackup.ini
+    -+> sudo docker run -ti [...] silviof/docker-borgbackup do_shell
+    -+> borg environment loaded
+    -+> $BORG_REPO and $BORG_PASSPHRASE are set
+    $
+
+We can now work with the `borg` command...
+
+    $ borg --help
+    usage: borg [-h]
+
+                {serve,init,check,change-passphrase,create,extract,rename,delete,list,mount,info,prune,upgrade,help}
+                ...
+
+    [...]
+
+We should know that `$BORG_REPO`, `$BORG_PASSPHRASE` are set and that all
+folders for backup are mounted at the `/BACKUP` directory.
+
+    $ echo $BORG_REPO
+    /STORAGE//backupuser
+    $ ls $BORG_REPO
+    ls: cannot access /STORAGE//sfr: No such file or directory
+    $ ls /BACKUP/
+    /development
+
+As we see the storage isn't initialized. We have to do this now. borg needs
+some options like password, compression etc. because we have set `$BORG_REPO`
+and `$BORG_PASSPHRASE` we don't need to specify the complete folder path and
+the password.
+
+    $ borg init -e repokey
+    Initializing repository at ""
+    Key in "<Repository /STORAGE/backupuser>" created.
+    Keep this key safe. Your data will be inaccessible without it.
+    Synchronizing chunks cache...
+    Archives: 0, w/ cached Idx: 0, w/ outdated Idx: 0, w/o cached Idx: 0.
+    Done.
+    $ ls $BORG_REPO
+    README  config  data  hints.0  index.0  lock.roster
+
+The storage is now initialized.
+
+The second step is to try do the backup by hand. Using the `borgctl` script
+it is very simple. (example output)
+
+    $ borgctl backup ~/borgbackup.ini
+    -+> sudo docker run [...] silviof/docker-borgbackup do_backup
+
+    -+> BACKUP for 001 ...
+    -+> borg create -s -v -C zlib,6 -e /development/archive   ::development-201510231842060200 /BACKUP//development
+    d /BACKUP/development
+    [...]
+    ------------------------------------------------------------------------------
+    Archive name: ::development-201510231842060200
+    Archive fingerprint: 1698bc896eb8c1bd0e4de84e4ddffc2402adad47d44c67eb5691ae04853fccf0
+    Start time: Fri Oct 23 18:42:07 2015
+    End time: Fri Oct 23 18:42:17 2015
+    Duration: 9.33 seconds
+    Number of files: 5
+
+                           Original size      Compressed size    Deduplicated size
+    This archive:                  362 B                411 B                411 B
+    All archives:                  362 B                411 B                411 B
+
+                           Unique chunks         Total chunks
+    Chunk index:                       2                    2
+    ------------------------------------------------------------------------------
+    -+> PRUNE  for 001 ...
+    -+> borg prune -p developmenttftp -s -v --keep-within 1w
+    Keeping archive: development-201510231842060200       Fri Oct 23 18:42:07 2015
+
+                           Original size      Compressed size    Deduplicated size
+    Deleted data:                    0 B                  0 B                  0 B
+    All archives:                  362 B                411 B                411 B
+
+                           Unique chunks         Total chunks
+    Chunk index:                       2                    2
+
+After controlling that all desired folders and files are backed up, we can
+configure automatic backup via cronjob.
+
+Add this to your cronjob via `crontab -e`:
+
+    12 * * * * borgctl backup ${HOME}/borgbackup.ini
+
 [borg]: https://borgbackup.github.io/
-
-# How to use
-
-## test this image
-
-```bash
-$ docker run -ti docker-borgbackup -h
-usage: borg [-h]
-            {serve,init,check,change-passphrase,create,extract,rename,delete,list,mount,info,prune,help}
-             ...
-
-Borg 0.24.0+17.g3100fac - Deduplicated Backups
-
-optional arguments:
-  -h, --help            show this help message and exit
-
-Available commands:
-  {serve,init,check,change-passphrase,create,extract,rename,delete,list,mount,info,prune,help}
-```
-
-Maybe its better to put `docker run -ti docker-borgbackup` in a `borg`-alias or
-script for the shell.
-
-### Example
-
-```bash
-$ docker run --rm -ti -v /storage/backup:/backupdir -v /home/xxx:/B/xxx docker-borgbackup init /backupdir
-[...]
-$ docker run --rm -ti -v /storage/backup:/backupdir -v /home/xxx:/B/xxx docker-borgbackup create -p /backupdir::/home/xxx /B/xxx
-[...]
-$ docker run --rm -ti -v /tmp/backup:/backupdir -v /development/gitarchives/sbc:/B/sbc docker-borgbackup list /backupdir
-/xxx                                 Thu Aug 13 12:41:40 2015
-```
-
-# Automatic backup
-
-This Dockerfile is arranged to do automatic backups. For this the option
-`mybackup` is added.
-
-## concept
-
-We run borg in a container which needs access to the directories/files which
-need a backup and the directory in which we put the backup, furthermore we need
-a configuration file for automation of the backup process via a cron job. For
-this we use docker specific options.
-
-All folders or files and the configuration file for the backup have to be
-mounted in the `/B` folder.
-
-The store folder for the backup have to be in `/backupdir`.
-
-## `ini`-parameter
-
-The file must be named `borg-backup.ini`. The file must have `MISC` and
-`REPO` and could have `PRUNE` and `EXCLUDE` sections.
-
-In this repository we have an `ini`-file example.
-
-### MISC
-
-Two options exists in the `MISC` section. One is `version` and has to be the
-same as the in-docker `mybackup` script. And the second option is for `verbose`
-output.
-
-### REPO
-
-You mount your backup folder into the `backupdir` folder of the docker image.
-Your backup repositories are accessible through the `backuprepo` option. And
-the backup archives are generated from the `backupname`, `dateappend` and
-`dateformat` options.
-
-### PRUNE
-
-You can disable pruning via `enable` option. The `borg` options for
-`--keep-hourly`, `--keep-daily`, `--keep-weekly`, `--keep-monthly` and
-`--keep-yearly` have a corresponding option via the `ini`-file options
-`hourly`, `daily`, `weekly`, `monthly` and `yearly`.
-
-### EXCLUDE
-
-All entries in the `EXCLUDE` section are added to the `--exclude` option at
-archive creation time. The name of the `ini`-file entries are regardless.
-
-## example
-
-```bash
-$ docker run -ti -v /etc:/B/etc -v ~/borg-backup.ini:/B/borg-backup.ini -v /mnt/ext/BACKUP:/backupdir docker-borgbackup init /backupdir
-$ docker run -ti -v /etc:/B/etc -v ~/borg-backup.ini:/B/borg-backup.ini -v /mnt/ext/BACKUP:/backupdir docker-borgbackup create /backupdir::xxx /B/...
-```
+[repository]: https://github.com/silvio/docker-borgbackup
+[shini]: https://github.com/wallyhall/shini.git

@@ -1,0 +1,418 @@
+#!/bin/bash
+
+# this is the borgbackup command file. This file needs to be installed on the
+# host and docker side.
+#
+# this targets currently supported:
+# backup - start a docker container which does start the do_backup target of
+#          this file
+# shell - opens a shell for restore and controling job
+# do_backup - target which started in the docker container and does the backup
+# server - start a server container
+#
+# get_borgctl: output the installed borgctl script
+# get_ini: output a commented example ini file
+# get_shini: shell ini parser
+#
+# functions host_* executed before the docker container gets started
+# functions docker_* executed within a docker container
+# functions helper_* helper functions used on host and within container
+
+declare -r DOCKERCONTAINER="silviof/docker-borgbackup"
+declare -r SCRIPT="$(realpath ${BASH_SOURCE[0]})"
+declare -r INSTALLDIR=$(dirname ${SCRIPT})
+
+# declare associative arrays
+declare -A GENERAL
+declare -A SERVER
+declare -A BACKUPS
+declare -A BACKUPIDS
+SHA1BORGCTL="$(sha1sum ${BASH_SOURCE[0]} | cut -d " " -f 1)"
+
+BORGBACKUP_DOCKER_RUN_SHELL_OPTION=${BORGBACKUP_DOCKER_RUN_SHELL_OPTION:-"-ti --rm"}
+BORGBACKUP_DOCKER_RUN_BACKUP_OPTION=${BORGBACKUP_DOCKER_RUN_BACKUP_OPTION:-"--rm --sig-proxy"}
+BORGBACKUP_DOCKER_RUN_SERVER_OPTION=${BORGBACKUP_DOCKER_RUN_SERVER_OPTION:-"--name=backupserver"}
+
+MODE=""
+
+txtwhi=$([[ "${TERM}" != "dumb" ]] && tput setaf 7) &> /dev/null
+txtred=$([[ "${TERM}" != "dumb" ]] && tput setaf 1) &> /dev/null
+txtgre=$([[ "${TERM}" != "dumb" ]] && tput setaf 2) &> /dev/null
+txtyel=$([[ "${TERM}" != "dumb" ]] && tput setaf 3) &> /dev/null
+txtres=$([[ "${TERM}" != "dumb" ]] && tput sgr0)    &> /dev/null
+
+errormsg() {
+	echo "${txtred}-+>${txtres} ${*}${txtres}"
+	exit 1
+}
+
+warnmsg() {
+	echo "${txtyel}-+>${txtres} ${*}${txtres}"
+}
+
+message() {
+	echo "${txtwhi}-+>${txtres} ${*}${txtres}"
+}
+
+commandmsg() {
+	echo "${txtgre}-+>${txtres} ${*}${txtres}"
+	${@}
+}
+
+usage() {
+	echo ""
+	message "usage: ${SCRIPT} < shell | backup | server > inifile"
+	message ""
+	message "Options:"
+	message ""
+	message "       shell ..............: opens a configured shell to use borgbackup"
+	message "       backup .............: does a backup"
+	message "       server .............: starts a borgbackup ssh server"
+}
+
+# check installation of shini
+SHINI=""
+if [[ -f ${INSTALLDIR}/../misc/shini/shini.sh ]]; then
+	SHINI="${INSTALLDIR}/../misc/shini/shini.sh"
+else
+	if [[ -f /usr/bin/shini ]] ; then
+		SHINI=/usr/bin/shini
+	elif [[ -f /usr/bin/shini.sh ]]; then
+		SHINI=/usr/bin/shini.sh
+	else
+		usage
+		errormsg "No /usr/bin/shini found, please copy shini.sh from https://github.com/wallyhall/shini to /usr/bin/"
+	fi
+fi
+
+# parser for inifile
+help_init_from_ini() {
+	source $SHINI
+
+	__shini_parsed () {
+		case "${1}" in
+			"GENERAL")
+				[[ "$2" == "REPOSITORY" ]] && GENERAL[REPOSITORY]="$3"
+				[[ "$2" == "SSHKEY" ]] && GENERAL[SSHKEY]="$3"
+				[[ "$2" == "ENCRYPTION" ]] && GENERAL[ENCRYPTION]="$3"
+				[[ "$2" == "SUDO" ]] && GENERAL[SUDO]="$3"
+				[[ "$2" == "FOLDER" ]] && GENERAL[FOLDER]="$3"
+				[[ "$2" == "FILECACHE" ]] && GENERAL[FILECACHE]="$3"
+				[[ "$2" == "VERBOSE" ]] && GENERAL[VERBOSE]="$3"
+				[[ "$2" == "STAT" ]] && GENERAL[STAT]="$3"
+				[[ "$2" == "RESTOREDIR" ]] && GENERAL[RESTOREDIR]="$3"
+				;;
+			"SERVER")
+				[[ "$2" == "REPOSITORYFOLDER" ]] && SERVER[REPOSITORYFOLDER]="${3}"
+				[[ "$2" == "SSHPORT" ]] && SERVER[SSHPORT]="${3}"
+				[[ "$2" == "SSHKEYCONF" ]] && SERVER[SSHKEYCONF]="${3}"
+				[[ "$2" == "BACKGROUND" ]] && SERVER[BACKGROUND]="${3}"
+				;;
+			"BACKUP"*)
+				id="${1//BACKUP/}"
+				BACKUPIDS["${id}"]=1
+				[[ "$2" == "ARCHIVENAME" ]] && BACKUPS[ARCHIVENAME${id}]="${3}"
+				[[ "$2" == "CHUNKER" ]] && BACKUPS[CHUNKER${id}]="${3}"
+				[[ "$2" == "COMPRESSION" ]] && BACKUPS[COMPRESSION${id}]="${3}"
+				[[ "$2" == "KEEPWITHIN" ]] && BACKUPS[KEEPWITHIN${id}]="${3}"
+				[[ "$2" == "PRUNEHOURLY" ]] && BACKUPS[PRUNEHOURLY${id}]="$3"
+				[[ "$2" == "PRUNEDAILY" ]] && BACKUPS[PRUNEDAILY${id}]="$3"
+				[[ "$2" == "PRUNEWEEKLY" ]] && BACKUPS[PRUNEWEEKLY${id}]="$3"
+				[[ "$2" == "PRUNEMONTHLY" ]] && BACKUPS[PRUNEMONTHLY${id}]="$3"
+				[[ "$2" == "PRUNEYEARLY" ]] && BACKUPS[PRUNEYEARLY${id}]="$3"
+				if [[ "$2" == "PATH" ]]; then
+					BACKUPS[PATH${id}]="${BACKUPS[PATH${id}]} ${3}"
+				fi
+				if [[ "$2" == "EXCLUDE" ]]; then
+					# Appending of exclude patterns
+					local excludepath="${3}"
+					[[ "${excludepath:0:1}" == "/" ]] && excludepath="/BACKUP/${excludepath}"
+					BACKUPS[EXCLUDE${id}]="${BACKUPS[EXCLUDE${id}]} ${excludepath}"
+				fi
+				;;
+			*)
+				errormsg "Section \"$1\" unknown"
+				;;
+		esac
+	}
+	shini_parse ${INIFILE}
+
+	if [[ "${MODE}" == "server" ]]; then
+		if [[ -n "${SERVER[REPOSITORYFOLDER]}${SERVER[SSHPORT]}${SERVER[SSHKEYCONF]}" ]]; then
+			[[ -z "${SERVER[REPOSITORYFOLDER]}" ]] && errormsg "ini property SERVER -> REPOSITORYFOLDER should be set"
+			[[ -z "${SERVER[SSHPORT]}" ]] && errormsg "ini property SERVER -> SSHPORT should be set"
+			[[ -z "${SERVER[SSHKEYCONF]}" ]] && errormsg "ini property SERVER -> SSHKEYCONF should be set"
+		fi
+		[[ -n "${SERVER[BACKGROUND]}" ]] && [[ "${SERVER[BACKGROUND]}" == "1" ]] && SERVER[BACKGROUND]="-d" || SERVER[BACKGROUND]="-ti"
+	else
+		# error and default handling
+		[[ -z "${GENERAL[FOLDER]}" ]] && errormsg "ini property GENERAL -> FOLDER should be set"
+		[[ -z "${GENERAL[SSHKEY]}" ]] && errormsg "sshkey is needed"
+
+		[[ -z "${GENERAL[REPOSITORY]}" ]] && errormsg "ini file problem: GENERAL -> REPOSITORY not set"
+
+		tlatag="${GENERAL[REPOSITORY]:0:3}"
+		[[ "${tlatag}" != "ssh" ]] && [[ "${tlatag}" != "fil" ]] && \
+			errormsg "-+> ini file problem: GENERAL -> REPOSITORY should start with ssh: or file:"
+		arr=(${GENERAL[REPOSITORY]//:/ })
+		[[ "${arr[0]}" == "file" ]] && GENERAL[FILESTORE]="${arr[1]}"
+
+		[[ -n "${GENERAL[VERBOSE]}" ]] && [[ "${GENERAL[VERBOSE]}" == "1" ]] && GENERAL[VERBOSE]="-v" || GENERAL[VERBOSE]=""
+		[[ -n "${GENERAL[STAT]}" ]] && [[ "${GENERAL[STAT]}" == "1" ]] && GENERAL[STAT]="-s" || GENERAL[STAT]=""
+
+
+		failed="0"
+		for id in "${!BACKUPIDS[@]}"; do
+			[[ -z "${BACKUPS[PATH${id}]}" ]] && warnmsg "ini-file problem: PATH-entry for BACKUP${id} not provided" && failed="1"
+			[[ -z "${BACKUPS[ARCHIVENAME${id}]}" ]] && warnmsg "ini-file problem: ARCHIVENAME-entry for BACKUP${id} not provided" && failed="1"
+			[[ -z "${BACKUPS[COMPRESSION${id}]}" ]] && BACKUPS[COMPRESSION${id}]="-C none" || BACKUPS[COMPRESSION${id}]="-C ${BACKUPS[COMPRESSION${id}]}"
+			[[ -n "${BACKUPS[CHUNKER${id}]}" ]] && BACKUPS[CHUNKER${id}]="--chunker-params ${BACKUPS[CHUNKER${id}]}"
+		done
+		[[ "${failed}" == "1" ]] && errormsg "stop because last message(s)"
+	fi
+}
+
+# set up $dockerenv for 'docker run'
+host_build_dockerenv_from_ini() {
+	help_init_from_ini
+
+	dockerenv="-v ${INIFILE}:/root/.borgbackup.ini:ro"
+	dockerenv="${dockerenv} -e HOSTINIFILE=${INIFILE}"
+	[[ -n "${SSH_AUTH_SOCK}" ]] && dockerenv="${dockerenv} -v ${SSH_AUTH_SOCK}:/root/.ssh-agent:ro -e SSH_AUTH_SOCK=/root/.ssh-agent"
+
+	sshkey=$(echo ${GENERAL[SSHKEY]}*)
+	for key in ${sshkey}; do
+		sshkeybasename=$(basename ${key})
+		dockerenv="${dockerenv} -v ${key}:/root/.ssh/${sshkeybasename}:ro"
+	done
+
+	[[ "${GENERAL[SUDO]}" == "1" ]] && sudo="sudo"
+	[[ -n "${GENERAL[FILECACHE]}" ]] && dockerenv="${dockerenv} -v ${GENERAL[FILECACHE]}:/root/.cache/borg"
+	[[ -n "${GENERAL[RESTOREDIR]}" ]] && dockerenv="${dockerenv} -v ${GENERAL[RESTOREDIR]}:/RESTORE"
+	[[ -n "${GENERAL[ENCRYPTION]}" ]] && dockerenv="${dockerenv} -e BORG_PASSPHRASE=${GENERAL[ENCRYPTION]}"
+
+	[[ -n "${GENERAL[FILESTORE]}" ]] && dockerenv="${dockerenv} -v ${GENERAL[FILESTORE]}:/STORAGE"
+
+	for id in "${!BACKUPIDS[@]}"; do
+		for path in $(echo ${BACKUPS[PATH${id}]}); do
+			dockerenv="${dockerenv} -v ${path}:/BACKUP/${path}:ro"
+		done
+	done
+}
+
+# start docker container and call do_shell in container
+host_shell() {
+	host_build_dockerenv_from_ini
+
+	commandmsg ${sudo} docker run ${BORGBACKUP_DOCKER_RUN_SHELL_OPTION} --privileged -e HOSTSHA1BORGCTL=${SHA1BORGCTL} ${dockerenv} ${DOCKERCONTAINER} do_shell /root/.borgbackup.ini
+}
+
+# setup $BORG_REPO and configure the sshd for no checks of
+# StrictHostKeyChecking and CheckHostIP
+docker_set_borg_repo() {
+	# update ld cache
+	ldconfig
+
+	help_init_from_ini
+
+	source /borg/env/bin/activate
+
+	if [[ -n "${GENERAL[FILESTORE]}" ]]; then
+		export BORG_REPO="/STORAGE/${GENERAL[FOLDER]}"
+	else
+		export BORG_REPO="${GENERAL[REPOSITORY]}//STORAGE/${GENERAL[FOLDER]}"
+	fi
+
+	# TODO: We don't want user interaction for automatic backups
+	echo "StrictHostKeyChecking no" >> /etc/ssh/ssh_config
+	echo "CheckHostIP no" >> /etc/ssh/ssh_config
+}
+
+# its called from host_do_shell at container time
+docker_do_shell() {
+	docker_set_borg_repo
+
+	message "borg environment loaded"
+	message "used inifile: ${txtyel}${HOSTINIFILE}${txtres}"
+	message "${txtyel}\$BORG_REPO${txtres} and ${txtyel}\$BORG_PASSPHRASE${txtres} are set"
+
+	# must be the last line
+	/bin/bash --rcfile /borg/env/bin/activate
+}
+
+# start a container and calls do_backup at start
+host_backup() {
+	host_build_dockerenv_from_ini
+
+	commandmsg ${sudo} docker run ${BORGBACKUP_DOCKER_RUN_BACKUP_OPTION} --privileged -e HOSTSHA1BORGCTL=${SHA1BORGCTL} ${dockerenv} ${DOCKERCONTAINER} do_backup /root/.borgbackup.ini
+}
+
+# does the backup at container time
+docker_do_backup() {
+	docker_set_borg_repo
+
+	source /borg/env/bin/activate
+
+	message "start backup ... used configuration: ${txtyel}${HOSTINIFILE}${txtres}"
+	DATE="$(date --rfc-3339=seconds)"
+	DATE="${DATE//[^[:alnum:]]/}"
+	for id in "${!BACKUPIDS[@]}"; do
+		echo ""
+		echo "-+> BACKUP for ${id} ..."
+		borgarchivebase="${BACKUPS[ARCHIVENAME${id}]//[^[:alnum:]]/}"
+		borgarchive="::${borgarchivebase}-${DATE}"
+		borgchunk="${BACKUPS[CHUNKER${id}]}"
+		borgcompress="${BACKUPS[COMPRESSION${id}]}"
+		borgexclude=""
+		for path in $(echo ${BACKUPS[EXCLUDE${id}]}); do
+			borgexclude="${borgexclude} -e ${path}"
+		done
+		borgpath=""
+		for path in $(echo ${BACKUPS[PATH${id}]}); do
+			borgpath="${borgpath} /BACKUP/${path}"
+		done
+
+		commandmsg borg create ${GENERAL[STAT]} ${GENERAL[VERBOSE]} ${borgcompress} ${borgchunk} ${borgexclude} ${borgarchive} ${borgpath}
+
+		borgpruneparam=""
+		[[ -n "${BACKUPS[PRUNEHOURLY${id}]}" ]] && borgpruneparam="${borgpruneparam} -H ${BACKUPS[PRUNEHOURLY${id}]}"
+		[[ -n "${BACKUPS[PRUNEDAILY${id}]}" ]] && borgpruneparam="${borgpruneparam} -d ${BACKUPS[PRUNEDAILY${id}]}"
+		[[ -n "${BACKUPS[PRUNEWEEKLY${id}]}" ]] && borgpruneparam="${borgpruneparam} -w ${BACKUPS[PRUNEWEEKLY${id}]}"
+		[[ -n "${BACKUPS[PRUNEMONTHLY${id}]}" ]] && borgpruneparam="${borgpruneparam} -m ${BACKUPS[PRUNEMONTHLY${id}]}"
+		[[ -n "${BACKUPS[PRUNEYEARLY${id}]}" ]] && borgpruneparam="${borgpruneparam} -y ${BACKUPS[PRUNEYEARLY${id}]}"
+		[[ -n "${BACKUPS[KEEPWITHIN${id}]}" ]] && borgpruneparam="${borgpruneparam} --keep-within ${BACKUPS[KEEPWITHIN${id}]}"
+
+		if [[ -n "${borgpruneparam}" ]]; then
+			message "PRUNE  for ${id} ..."
+			commandmsg borg prune -p ${borgarchivebase} ${GENERAL[STAT]} ${GENERAL[VERBOSE]} ${borgpruneparam}
+		fi
+	done
+}
+
+# stops and delete a running container 'backupserver', runs a container for
+# access via ssh+'borg serve', access only possible via ssh-keys and spezified
+# ssh-port
+host_server() {
+	help_init_from_ini
+
+	REPOSITORYFOLDER="${SERVER[REPOSITORYFOLDER]}"
+	SSHKEYCONF="${SERVER[SSHKEYCONF]}"
+	SSHPORT="${SERVER[SSHPORT]}"
+
+	failed="0"
+	[[ ! -d "${REPOSITORYFOLDER}" ]] && warnmsg "REPOSITORYFOLDER \"${REPOSITORYFOLDER}\" needs to be a directory and should exists" && failed="1"
+	[[ ! -f "${SSHKEYCONF}" ]] && warnmsg "SSHKEYCONF \"${SSHKEYCONF}\" needs to be a file and should exists" && failed="1"
+	[[ "${failed}" == "1" ]] && errormsg "stop because last failures"
+
+	dockerenv="-v ${REPOSITORYFOLDER}:/STORAGE"
+	dockerenv="${dockerenv} -v ${SSHKEYCONF}:/root/sshkeys.txt:ro"
+	dockerenv="${dockerenv} -v ${INIFILE}:/root/.borgbackup.ini:ro"
+	dockerenv="${dockerenv} -e HOSTINIFILE=${INIFILE}"
+	dockerenv="${dockerenv} -p ${SSHPORT}:${SSHPORT} -e SSHPORT=${SSHPORT}"
+
+	commandmsg ${sudo} docker stop backupserver
+	commandmsg ${sudo} docker rm backupserver
+	commandmsg ${sudo} docker run ${BORGBACKUP_DOCKER_RUN_SERVER_OPTION} --privileged ${SERVER[BACKGROUND]} -e HOSTSHA1BORGCTL=${SHA1BORGCTL} ${dockerenv} ${DOCKERCONTAINER} do_server /root/.borgbackup.ini
+}
+
+# generate the authorized_keys file and starts a sshd at container time
+docker_do_server() {
+	# build authorized_keys file
+	mkdir -p /root/.ssh
+	:>/root/.ssh/authorized_keys
+	while IFS='' read -r line || [[ -n "${line}" ]]; do
+		echo "command=\"/borg/env/bin/borg serve --verbose --restrict-to-path /STORAGE\" ${line}" >> /root/.ssh/authorized_keys
+	done < /root/sshkeys.txt
+
+	# configure ssh port
+	sed -i "s/^Port 22$/Port ${SSHPORT}/" /etc/ssh/sshd_config
+
+	# start/stop of sshd via init script to setup folder etc
+	/etc/init.d/ssh start > /dev/null
+	/etc/init.d/ssh stop  > /dev/null
+
+	ip addr show eth0
+
+	/usr/sbin/sshd -D
+}
+
+# check called borgctl script in container is the same version like the host
+# borgctl script
+docker_compare_host_container_script() {
+	[[ "${HOSTSHA1BORGCTL}" != "${SHA1BORGCTL}" ]] && usage && \
+		warnmsg "Container control script is not the same as the client script" && \
+		errormsg "ccs:${HOSTSHA1BORGCTL} != hcs:${SHA1BORGCTL}"
+}
+
+help_check_ini() {
+	[[ ! -e "${INIFILE}" ]] && usage && errormsg "inifile ${INIFILE} not found"
+}
+
+# check parameters
+case ${#} in
+	1)
+		[[ "${1}" != "get_borgctl" ]] && [[ "${1}" != "get_ini" ]] && [[ "${1}" != "get_shini" ]] \
+			&& usage && errormsg "wrong parameter count"
+
+		# get_borgctl and get_ini must be called within a container
+		# this booth functions should only called via 'docker
+		# run' command, so HOSTSHA1BORGCTL isn't set.
+		[[ -n "${HOSTSHA1BORGCTL}" ]] && usage && errormsg "get_borgctl and get_ini should only run via plain 'docker run' command"
+		;;
+	2)
+		declare -r INIFILE="$(realpath ${2})"
+		;;
+	*)
+		usage
+		errormsg "wrong parameter count"
+		;;
+esac
+
+case "${1}" in
+	"backup")
+		MODE="backup"
+		help_check_ini
+		host_backup
+		;;
+	"do_backup")
+		MODE="backup"
+		docker_compare_host_container_script
+		help_check_ini
+		docker_do_backup
+		;;
+	"shell")
+		MODE="shell"
+		help_check_ini
+		host_shell
+		;;
+	"do_shell")
+		MODE="shell"
+		docker_compare_host_container_script
+		help_check_ini
+		docker_do_shell
+		;;
+	"server")
+		MODE="server"
+		help_check_ini
+		host_server
+		;;
+	"do_server")
+		MODE="server"
+		docker_compare_host_container_script
+		help_check_ini
+		docker_do_server
+		;;
+	"get_borgctl")
+		cat /usr/bin/borgctl
+		;;
+	"get_ini")
+		cat /borg/example.ini
+		;;
+	"get_shini")
+		cat /usr/bin/shini
+		;;
+	*)
+		errormsg "${txtred}${1}${txtres} isn't a usefull command"
+		;;
+esac
+exit 0
