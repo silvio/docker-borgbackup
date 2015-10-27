@@ -6,6 +6,15 @@ computer.
 
 The container can be pulled via `docker pull silviof/docker-borgbackup`.
 
+# Installation
+
+Retrieve the docker image via `docker pull` and create an alias in your
+`.${SHELL}rc` or put a shell script somewhere.
+
+```
+% docker pull silviof/docker-borgbackup
+```
+
 # How to run
 
 This backup system is controlled via borgctl script from this [repository].
