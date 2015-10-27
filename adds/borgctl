@@ -226,9 +226,11 @@ docker_set_borg_repo() {
 docker_do_shell() {
 	docker_set_borg_repo
 
+	echo ""
 	message "borg environment loaded"
 	message "used inifile: ${txtyel}${HOSTINIFILE}${txtres}"
 	message "${txtyel}\$BORG_REPO${txtres} and ${txtyel}\$BORG_PASSPHRASE${txtres} are set"
+	message "for restoring switch to ${txtyel}/RESTORE${txtres} folder, ${txtyel}${GENERAL[RESTOREDIR]}${txtres} is mounted here"
 
 	# must be the last line
 	/bin/bash --rcfile /borg/env/bin/activate
