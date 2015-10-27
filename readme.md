@@ -29,6 +29,7 @@ All tree files can be retrieved via this three commands:
 docker run --rm silviof/docker-borgbackup get_borgctl > borgctl
 docker run --rm silviof/docker-borgbackup get_ini > borgbackup.ini
 docker run --rm silviof/docker-borgbackup get_shini > shini
+chmod u+x borgctl
 ```
 
 You have two choices to save you data. The first one is to backup on a local
