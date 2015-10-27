@@ -4,8 +4,6 @@
 This docker project brings the small and simple backup solution [borg] to your
 computer.
 
-The container can be pulled via `docker pull silviof/docker-borgbackup`.
-
 # Installation
 
 Retrieve the docker image via `docker pull` and create an alias in your
