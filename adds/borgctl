@@ -88,6 +88,7 @@ help_init_from_ini() {
 			"GENERAL")
 				[[ "$2" == "REPOSITORY" ]] && GENERAL[REPOSITORY]="$3"
 				[[ "$2" == "SSHKEY" ]] && GENERAL[SSHKEY]="$3"
+				[[ "$2" == "SSHAUTH" ]] && GENERAL[SSHAUTH]="$3"
 				[[ "$2" == "ENCRYPTION" ]] && GENERAL[ENCRYPTION]="$3"
 				[[ "$2" == "SUDO" ]] && GENERAL[SUDO]="$3"
 				[[ "$2" == "FOLDER" ]] && GENERAL[FOLDER]="$3"
@@ -141,7 +142,10 @@ help_init_from_ini() {
 	else
 		# error and default handling
 		[[ -z "${GENERAL[FOLDER]}" ]] && errormsg "ini property GENERAL -> FOLDER should be set"
-		[[ -z "${GENERAL[SSHKEY]}" ]] && errormsg "sshkey is needed"
+		[[ "${GENERAL[SSHAUTH]}" != "1" ]] && GENERAL[SSHAUTH]=""
+		[[ "${GENERAL[SSHAUTH]}" == "1" ]] && [[ -z "${SSH_AUTH_SOCK}" ]] && errormsg "for GENERAL -> SSHAUTH you need SSH_AUTH_SOCK set up correctly"
+		[[ -n "${GENERAL[SSHKEY]}" ]] && [[ -n "${GENERAL[SSHAUTH]}" ]] && warnmsg "GENERAL SSHKEY and SSHAUTH set, using SSHKEY" && GENERAL[SSHAUTH]=""
+		[[ -z "${GENERAL[SSHKEY]}" ]] && [[ -z "${GENERAL[SSHAUTH]}" ]] && errormsg "ini property GENERAL -> SSHKEY | SSHAUTH should be set"
 
 		[[ -z "${GENERAL[REPOSITORY]}" ]] && errormsg "ini file problem: GENERAL -> REPOSITORY not set"
 
@@ -172,13 +176,16 @@ host_build_dockerenv_from_ini() {
 
 	dockerenv="-v ${INIFILE}:/root/.borgbackup.ini:ro"
 	dockerenv="${dockerenv} -e HOSTINIFILE=${INIFILE}"
-	[[ -n "${SSH_AUTH_SOCK}" ]] && dockerenv="${dockerenv} -v ${SSH_AUTH_SOCK}:/root/.ssh-agent:ro -e SSH_AUTH_SOCK=/root/.ssh-agent"
 
-	sshkey=$(echo ${GENERAL[SSHKEY]}*)
-	for key in ${sshkey}; do
-		sshkeybasename=$(basename ${key})
-		dockerenv="${dockerenv} -v ${key}:/root/.ssh/${sshkeybasename}:ro"
-	done
+	if [[ -n "${GENERAL[SSHKEY]}" ]]; then
+		sshkey=$(echo ${GENERAL[SSHKEY]}*)
+		for key in ${sshkey}; do
+			sshkeybasename=$(basename ${key})
+			dockerenv="${dockerenv} -v ${key}:/root/.ssh/${sshkeybasename}:ro"
+		done
+	else
+		dockerenv="${dockerenv} -v ${SSH_AUTH_SOCK}:/root/.ssh-agent:ro -e SSH_AUTH_SOCK=/root/.ssh-agent"
+	fi
 
 	[[ "${GENERAL[SUDO]}" == "1" ]] && sudo="sudo"
 	[[ -n "${GENERAL[FILECACHE]}" ]] && dockerenv="${dockerenv} -v ${GENERAL[FILECACHE]}:/root/.cache/borg"
