@@ -146,6 +146,7 @@ help_init_from_ini() {
 		[[ "${GENERAL[SSHAUTH]}" == "1" ]] && [[ -z "${SSH_AUTH_SOCK}" ]] && errormsg "for GENERAL -> SSHAUTH you need SSH_AUTH_SOCK set up correctly"
 		[[ -n "${GENERAL[SSHKEY]}" ]] && [[ -n "${GENERAL[SSHAUTH]}" ]] && warnmsg "GENERAL SSHKEY and SSHAUTH set, using SSHKEY" && GENERAL[SSHAUTH]=""
 		[[ -z "${GENERAL[SSHKEY]}" ]] && [[ -z "${GENERAL[SSHAUTH]}" ]] && errormsg "ini property GENERAL -> SSHKEY | SSHAUTH should be set"
+		[[ "${GENERAL[SSHKEY]##*.}" == "pub" ]] && errormsg "ini property GENERAL -> SSHKEY have to be the private file"
 
 		[[ -z "${GENERAL[REPOSITORY]}" ]] && errormsg "ini file problem: GENERAL -> REPOSITORY not set"
 
@@ -208,8 +209,8 @@ host_shell() {
 	commandmsg ${sudo} docker run ${BORGBACKUP_DOCKER_RUN_SHELL_OPTION} --privileged -e HOSTSHA1BORGCTL=${SHA1BORGCTL} ${dockerenv} ${DOCKERCONTAINER} do_shell /root/.borgbackup.ini
 }
 
-# setup $BORG_REPO and configure the sshd for no checks of
-# StrictHostKeyChecking and CheckHostIP
+# configure the sshd for no checks of StrictHostKeyChecking and CheckHostIP and
+# add identity entry in config file, setup $BORG_REPO
 docker_set_borg_repo() {
 	# update ld cache
 	ldconfig
@@ -224,9 +225,14 @@ docker_set_borg_repo() {
 		export BORG_REPO="${GENERAL[REPOSITORY]}//STORAGE/${GENERAL[FOLDER]}"
 	fi
 
-	# TODO: We don't want user interaction for automatic backups
 	echo "StrictHostKeyChecking no" >> /etc/ssh/ssh_config
 	echo "CheckHostIP no" >> /etc/ssh/ssh_config
+
+	# point to the right identityfile
+	if [[ -n "${GENERAL[SSHKEY]}" ]]; then
+		sshkeyname=$(basename "${GENERAL[SSHKEY]}")
+		echo "IdentityFile /root/.ssh/${sshkeyname}" >> /etc/ssh/ssh_config
+	fi
 }
 
 # its called from host_do_shell at container time
