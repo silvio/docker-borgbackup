@@ -15,15 +15,13 @@ Retrieve the docker image via `docker pull`.
 # How to run
 
 This backup system is controlled via borgctl script from this [repository].
-Alternatively the controlling script can and should be acquired via `docker run --rm
-silviof/docker-borgbackup get_borgctl`. The used script must be the same as the
-script in the container. Configuration is done via an ini-file. You can get
-a example ini file via `docker run --rm silviof/docker-borgbackup get_ini`.
-This project is configured via ini-files. For this you need the [shini] ini
-file parser located at `/usr/bin/shini.sh`. You can get a copy with `docker run
---rm silviof/docker-borgbackup get_shini`.
-
-All tree files can be retrieved via this three commands:
+Alternatively the controlling script can and should be acquired via `docker run
+--rm silviof/docker-borgbackup get_borgctl`. The used script must be the same
+as the script in the container. Configuration is done via an ini-file. You can
+get an example ini file via `docker run --rm silviof/docker-borgbackup
+get_ini`. For this you need the [shini] ini file parser located at
+`/usr/bin/shini.sh`. You can get a copy with `docker run --rm
+silviof/docker-borgbackup get_shini`.
 
 ```bash
 docker run --rm silviof/docker-borgbackup get_borgctl > borgctl
@@ -57,7 +55,7 @@ stores are mounted in read-only mode.
 For a simple example let us assume we need to backup everything under
 `/development` folder without the `/development/archive` subfolder. We do our
 backup everyday at 12 o\`clock and hold the backups for the last 7 days. Our
-backup folder is mounted in /media/sde3. The backup should be placed into the
+backup folder is mounted in `/media/sde3`. The backup should be placed into the
 `BACKUP` folder of this device.
 
 The first step is to have a `borgbackup.ini` file. The contents should be
@@ -126,7 +124,7 @@ the password.
 
 The storage is now initialized.
 
-The second step is to try do the backup by hand. Using the `borgctl` script
+The second step is to try to do the backup by hand. Using the `borgctl` script
 it is very simple. (example output)
 
     $ borgctl backup ~/borgbackup.ini
