@@ -293,7 +293,7 @@ docker_do_backup() {
 
 		if [[ -n "${borgpruneparam}" ]]; then
 			message "PRUNE  for ${id} ..."
-			commandmsg borg prune -p ${borgarchivebase} ${GENERAL[STAT]} ${GENERAL[VERBOSE]} ${borgpruneparam}
+			commandmsg borg prune -P ${borgarchivebase} ${GENERAL[STAT]} ${GENERAL[VERBOSE]} ${borgpruneparam}
 		fi
 	done
 }
