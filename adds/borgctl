@@ -221,6 +221,9 @@ docker_set_borg_repo() {
 
 	source /borg/env/bin/activate
 
+	# environment variables
+	export BORG_RELOCATED_REPO_ACCESS_IS_OK=yes;
+
 	if [[ -n "${GENERAL[FILESTORE]}" ]]; then
 		export BORG_REPO="/STORAGE/${GENERAL[FOLDER]}"
 	else
@@ -246,6 +249,7 @@ docker_do_shell() {
 	message "used inifile: ${txtyel}${HOSTINIFILE}${txtres}"
 	message "${txtyel}\$BORG_REPO${txtres} and ${txtyel}\$BORG_PASSPHRASE${txtres} are set"
 	message "for restoring switch to ${txtyel}/RESTORE${txtres} folder, ${txtyel}${GENERAL[RESTOREDIR]}${txtres} is mounted here"
+	message "BORG_RELOCATED_REPO_ACCESS_IS_OK is set to yes"
 
 	# must be the last line
 	/bin/bash --rcfile /borg/env/bin/activate
