@@ -94,6 +94,7 @@ help_init_from_ini() {
 				[[ "$2" == "FOLDER" ]] && GENERAL[FOLDER]="$3"
 				[[ "$2" == "FILECACHE" ]] && GENERAL[FILECACHE]="$3"
 				[[ "$2" == "VERBOSE" ]] && GENERAL[VERBOSE]="$3"
+				[[ "$2" == "PRUNEVERBOSE" ]] && GENERAL[PRUNEVERBOSE]="$3"
 				[[ "$2" == "STAT" ]] && GENERAL[STAT]="$3"
 				[[ "$2" == "RESTOREDIR" ]] && GENERAL[RESTOREDIR]="$3"
 				;;
@@ -157,6 +158,7 @@ help_init_from_ini() {
 		[[ "${arr[0]}" == "file" ]] && GENERAL[FILESTORE]="${arr[1]}"
 
 		[[ -n "${GENERAL[VERBOSE]}" ]] && [[ "${GENERAL[VERBOSE]}" == "1" ]] && GENERAL[VERBOSE]="-v" || GENERAL[VERBOSE]=""
+		[[ -n "${GENERAL[PRUNEVERBOSE]}" ]] && [[ "${GENERAL[PRUNEVERBOSE]}" == "1" ]] && GENERAL[PRUNEVERBOSE]="-v --list" || GENERAL[PRUNEVERBOSE]=""
 		[[ -n "${GENERAL[STAT]}" ]] && [[ "${GENERAL[STAT]}" == "1" ]] && GENERAL[STAT]="-s" || GENERAL[STAT]=""
 
 
@@ -293,7 +295,7 @@ docker_do_backup() {
 
 		if [[ -n "${borgpruneparam}" ]]; then
 			message "PRUNE  for ${id} ..."
-			commandmsg borg prune -P ${borgarchivebase} ${GENERAL[STAT]} ${GENERAL[VERBOSE]} ${borgpruneparam}
+			commandmsg borg prune -P ${borgarchivebase} ${GENERAL[STAT]} ${GENERAL[PRUNEVERBOSE]} ${borgpruneparam}
 		fi
 	done
 }
