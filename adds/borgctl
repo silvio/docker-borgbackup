@@ -157,7 +157,7 @@ help_init_from_ini() {
 		arr=(${GENERAL[REPOSITORY]//:/ })
 		[[ "${arr[0]}" == "file" ]] && GENERAL[FILESTORE]="${arr[1]}"
 
-		[[ -n "${GENERAL[VERBOSE]}" ]] && [[ "${GENERAL[VERBOSE]}" == "1" ]] && GENERAL[VERBOSE]="-v" || GENERAL[VERBOSE]=""
+		[[ -n "${GENERAL[VERBOSE]}" ]] && [[ "${GENERAL[VERBOSE]}" == "1" ]] && GENERAL[VERBOSE]="-v --list" || GENERAL[VERBOSE]=""
 		[[ -n "${GENERAL[PRUNEVERBOSE]}" ]] && [[ "${GENERAL[PRUNEVERBOSE]}" == "1" ]] && GENERAL[PRUNEVERBOSE]="-v --list" || GENERAL[PRUNEVERBOSE]=""
 		[[ -n "${GENERAL[STAT]}" ]] && [[ "${GENERAL[STAT]}" == "1" ]] && GENERAL[STAT]="-s" || GENERAL[STAT]=""
 
