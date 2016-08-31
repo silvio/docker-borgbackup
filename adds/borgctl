@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # this is the borgbackup command file. This file needs to be installed on the
 # host and docker side.
