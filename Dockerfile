@@ -7,6 +7,9 @@ WORKDIR /borg
 ENTRYPOINT ["/usr/bin/borgctl"]
 CMD ["--help"]
 
+ARG IMAGE_VERSION
+ENV IMAGE_VERSION ${IMAGE_VERSION:-1.0.0}
+
 # to prevent some filepath issues with python code we have to set the language
 ENV LANG C.UTF-8
 RUN ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime
@@ -38,8 +41,7 @@ RUN virtualenv --python=python3 /borg/env ; \
     pip -v --log=/borg/pip-install.log install cython ; \
     pip -v --log=/borg/pip-install.log install tox
 
-ENV VERSION=1.0.6
-RUN git clone https://github.com/borgbackup/borg.git ./borgbackup-git -b ${VERSION}; \
+RUN git clone https://github.com/borgbackup/borg.git ./borgbackup-git -b ${IMAGE_VERSION}; \
     . /borg/env/bin/activate ; \
     pip -v --log=/borg/pip-install.log install 'llfuse<0.41' ;\
     pip -v --log=/borg/pip-install.log install -r ./borgbackup-git/requirements.d/development.txt ;\
