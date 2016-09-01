@@ -72,7 +72,7 @@ usage() {
 
 # check installation of shini
 SHINI=""
-pathes=(/bin /usr/bin ${HOME}/bin ${HOME}/usr/bin ${INSTALLDIR}/../misc/shini)
+pathes=(/bin /usr/bin ${HOME}/bin ${HOME}/usr/bin ${INSTALLDIR}/../misc/shini ${INSTALLDIR})
 for path in ${pathes[@]}; do
 	[[ -f ${path}/shini.sh ]] && SHINI=${path}/shini.sh && break
 	[[ -f ${path}/shini ]] && SHINI=${path}/shini && break
