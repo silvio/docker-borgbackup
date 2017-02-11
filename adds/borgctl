@@ -97,6 +97,7 @@ help_init_from_ini() {
 				[[ "$2" == "PRUNEVERBOSE" ]] && GENERAL[PRUNEVERBOSE]="$3"
 				[[ "$2" == "STAT" ]] && GENERAL[STAT]="$3"
 				[[ "$2" == "RESTOREDIR" ]] && GENERAL[RESTOREDIR]="$3"
+				[[ "$2" == "COMPARESCRIPT" ]] && GENERAL[COMPARESCRIPT]="$3"
 				;;
 			"SERVER")
 				[[ "$2" == "REPOSITORYFOLDER" ]] && SERVER[REPOSITORYFOLDER]="${3}"
@@ -354,7 +355,7 @@ docker_do_server() {
 # check called borgctl script in container is the same version like the host
 # borgctl script
 docker_compare_host_container_script() {
-	[[ "${HOSTSHA1BORGCTL}" != "${SHA1BORGCTL}" ]] && usage && \
+	[[ "${GENERAL[COMPARESCRIPT]}" != "1" && "${HOSTSHA1BORGCTL}" != "${SHA1BORGCTL}" ]] && usage && \
 		warnmsg "Container control script is not the same as the client script" && \
 		errormsg "ccs:${HOSTSHA1BORGCTL} != hcs:${SHA1BORGCTL}"
 }
