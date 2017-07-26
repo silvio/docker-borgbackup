@@ -40,7 +40,7 @@ RUN virtualenv --python=python3 /borg/env ; \
 
 ARG IMAGE_VERSION
 ENV IMAGE_VERSION ${IMAGE_VERSION:-1.0.11}
-RUN git clone https://github.com/borgbackup/borg.git ./borgbackup-git -b ${VERSION}; \
+RUN git clone https://github.com/borgbackup/borg.git ./borgbackup-git -b ${IMAGE_VERSION}; \
     . /borg/env/bin/activate ; \
     pip -v --log=/borg/pip-install.log install 'llfuse<0.41' ;\
     pip -v --log=/borg/pip-install.log install -r ./borgbackup-git/requirements.d/development.txt ;\
