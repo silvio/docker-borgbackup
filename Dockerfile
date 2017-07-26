@@ -38,7 +38,8 @@ RUN virtualenv --python=python3 /borg/env ; \
     pip -v --log=/borg/pip-install.log install cython ; \
     pip -v --log=/borg/pip-install.log install tox
 
-ENV VERSION=1.0.11
+ARG IMAGE_VERSION
+ENV IMAGE_VERSION ${IMAGE_VERSION:-1.0.11}
 RUN git clone https://github.com/borgbackup/borg.git ./borgbackup-git -b ${VERSION}; \
     . /borg/env/bin/activate ; \
     pip -v --log=/borg/pip-install.log install 'llfuse<0.41' ;\
