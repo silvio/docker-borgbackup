@@ -35,11 +35,13 @@ BORGBACKUP_DOCKER_RUN_SERVER_OPTION=${BORGBACKUP_DOCKER_RUN_SERVER_OPTION:-"--na
 
 MODE=""
 
-txtwhi=$([[ "${TERM}" != "dumb" ]] && tput setaf 7) &> /dev/null
-txtred=$([[ "${TERM}" != "dumb" ]] && tput setaf 1) &> /dev/null
-txtgre=$([[ "${TERM}" != "dumb" ]] && tput setaf 2) &> /dev/null
-txtyel=$([[ "${TERM}" != "dumb" ]] && tput setaf 3) &> /dev/null
-txtres=$([[ "${TERM}" != "dumb" ]] && tput sgr0)    &> /dev/null
+
+hastput=$(command -v tput)
+txtwhi=$([[ "${TERM}" != "dumb" ]] && test -n "${hastput}" && tput setaf 7) &> /dev/null
+txtred=$([[ "${TERM}" != "dumb" ]] && test -n "${hastput}" && tput setaf 1) &> /dev/null
+txtgre=$([[ "${TERM}" != "dumb" ]] && test -n "${hastput}" && tput setaf 2) &> /dev/null
+txtyel=$([[ "${TERM}" != "dumb" ]] && test -n "${hastput}" && tput setaf 3) &> /dev/null
+txtres=$([[ "${TERM}" != "dumb" ]] && test -n "${hastput}" && tput sgr0)    &> /dev/null
 
 errormsg() {
 	echo "${txtred}-+>${txtres} ${*}${txtres}"
